@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guitar Note Trainer</title>
+<!--
+  Guitar Note Trainer
+  Copyright © 2025 Cameron FitzPatrick
+  All Rights Reserved
+-->
+<style>
+  body { font-family: sans-serif; text-align: center; background: #fafafa; }
+  h1 { margin-top: 20px; }
+  .fretboard { 
+    display: grid; 
+    grid-template-rows: repeat(6, 50px); 
+    grid-gap: 2px; 
+    margin: 20px auto; 
+    width: max-content;
+  }
+  .string-row { 
+    display: grid; 
+    grid-template-columns: 40px repeat(15, 50px); 
+    position: relative; 
+    align-items: center;
+  }
+  .string-row::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 40px; 
+    right: 0;
+    height: 2px;
+    background: black;
+    transform: translateY(-50%);
+    z-index: 0;
+  }
+  .fret { 
+    height: 100%; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    cursor: pointer; 
+    position: relative; 
+    z-index: 1;
+  }
+  .fret:not(:first-child) { border-left: 1px solid #ccc; }
+  .fret:last-child { border-right: 1px solid #ccc; }
+  .fret.open-separator { border-left: 3px solid black; }
+  .note-label { 
+    text-align: right;
+    padding-right: 6px;
+    font-weight: bold; 
+    z-index: 1; 
+  }
+  .fret-numbers {
+    display: grid;
+    grid-template-columns: 40px repeat(15, 50px);
+    justify-content: center;
+    margin-top: 4px;
+    font-size: 0.8em;
+    color: #333;
+  }
+  .fret-numbers div { text-align: center; }
+  #current-note { font-size: 1.5em; margin: 10px 0; }
+  #feedback { font-size: 1.2em; margin-top: 10px; height: 1.2em; }
+  #tuning { margin: 10px 0; padding: 4px; }
+</style>
+</head>
+<body>
+
+<h1>Guitar Note Trainer</h1>
+
+<label for="tuning">Select Tuning:</label>
+<select id="tuning">
+  <option value="standard">Standard E</option>
+  <option value="dropd">Drop D</option>
+  <option value="dstandard">D Standard</option>
+  <option value="openG">Open G</option>
+</select>
+
+<p id="current-note">Note: ?</p>
+<div class="fretboard" id="fretboard"></div>
+<div class="fret-numbers" id="fret-numbers"></div>
+<p id="feedback"></p>
+
+<script>
+const tunings = {
+  standard: ['E', 'A', 'D', 'G', 'B', 'E'],
+  dropd: ['D', 'A', 'D', 'G', 'B', 'E'],
+  dstandard: ['D', 'G', 'C', 'F', 'A', 'D'],
+  openG: ['D', 'G', 'D', 'G', 'B', 'D']
+};
+const frets = 15;
+const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const noteFrequencies = {
+  'C': 261.63, 'C#': 277.18, 'D': 293.66, 'D#': 311.13,
+  'E': 329.63, 'F': 349.23, 'F#': 369.99, 'G': 392.00,
+  'G#': 415.30, 'A': 440.00, 'A#': 466.16, 'B': 493.88
+};
+
+let currentNote = '';
+let currentStrings = [...tunings.standard];
+let allNotes = [];
+const board = document.getElementById('fretboard');
+const fretNumbersRow = document.getElementById('fret-numbers');
+const tuningSelect = document.getElementById('tuning');
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+tuningSelect.addEventListener('change', () => {
+  currentStrings = [...tunings[tuningSelect.value]];
+  buildAllNotes();
+  rebuildFretboard();
+});
+
+// Build and shuffle all notes across the fretboard
+function buildAllNotes() {
+  allNotes = [];
+  currentStrings.forEach((string, si) => {
+    for (let f = 0; f <= frets; f++) {
+      const openNoteIndex = notes.indexOf(string);
+      const noteIndex = (openNoteIndex + f) % 12;
+      allNotes.push({ note: notes[noteIndex], string: si, fret: f });
+    }
+  });
+  // shuffle
+  for (let i = allNotes.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [allNotes[i], allNotes[j]] = [allNotes[j], allNotes[i]];
+  }
+}
+
+function playNote(note) {
+  const osc = audioCtx.createOscillator();
+  const gainNode = audioCtx.createGain();
+  osc.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+  osc.type = 'sine';
+  osc.frequency.value = noteFrequencies[note] || 440;
+  gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.5);
+}
+
+function randomNote() {
+  if (allNotes.length === 0) buildAllNotes();
+  const next = allNotes.pop();
+  currentNote = next.note;
+  document.getElementById('current-note').textContent = 'Note: ' + currentNote;
+}
+
+// Build the visual fretboard
+function rebuildFretboard() {
+  board.innerHTML = '';
+  fretNumbersRow.innerHTML = '';
+
+  // Fret numbers
+  const emptyCell = document.createElement('div');
+  fretNumbersRow.appendChild(emptyCell);
+  for (let f = 1; f <= frets; f++) {
+    const numCell = document.createElement('div');
+    numCell.textContent = f;
+    fretNumbersRow.appendChild(numCell);
+  }
+
+  // Strings (high E bottom, low E top)
+  currentStrings.slice().reverse().forEach((string, reversedIndex) => {
+    const stringIndex = currentStrings.length - 1 - reversedIndex;
+    const row = document.createElement('div');
+    row.className = 'string-row';
+
+    const labelCell = document.createElement('div');
+    labelCell.className = 'note-label';
+    labelCell.textContent = string;
+    row.appendChild(labelCell);
+
+    for (let f = 1; f <= frets; f++) {
+      const fret = document.createElement('div');
+      fret.className = 'fret';
+      fret.dataset.string = stringIndex;
+      fret.dataset.fret = f;
+
+      if(f === 1) fret.classList.add('open-separator');
+
+      if(f === 12) {
+        const marker = document.createElement('div');
+        marker.style.position = 'absolute';
+        marker.style.top = '5px';
+        marker.style.left = '50%';
+        marker.style.transform = 'translateX(-50%)';
+        marker.style.width = '6px';
+        marker.style.height = '6px';
+        marker.style.background = 'black';
+        marker.style.borderRadius = '50%';
+        marker.style.pointerEvents = 'none';
+        fret.appendChild(marker);
+      }
+
+      fret.addEventListener('click', () => checkNote(stringIndex, f));
+      row.appendChild(fret);
+    }
+
+    board.appendChild(row);
+  });
+}
+
+// Check the note when a fret is clicked
+function checkNote(stringIndex, fretIndex) {
+  const feedback = document.getElementById('feedback');
+  const noteDisplay = document.getElementById('current-note');
+
+  const openNoteIndex = notes.indexOf(currentStrings[stringIndex]);
+  const noteIndex = (openNoteIndex + fretIndex) % 12;
+  const clickedNote = notes[noteIndex];
+
+  playNote(clickedNote);
+
+  if (clickedNote === currentNote) {
+    feedback.textContent = '✅ Correct!';
+  } else {
+    feedback.textContent = '❌ Wrong. That was ' + clickedNote;
+  }
+
+  noteDisplay.textContent = 'Note: ?';
+
+  setTimeout(() => { randomNote(); }, 1000);
+  setTimeout(() => { feedback.textContent = ''; }, 5000);
+}
+
+// Initialize
+buildAllNotes();
+rebuildFretboard();
+randomNote();
+</script>
+
+</body>
+</html>
